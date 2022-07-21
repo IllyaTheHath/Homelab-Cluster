@@ -1,0 +1,166 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: sc-qbittorrent-downloads
+  namespace: qbittorrent
+provisioner: smb.csi.k8s.io
+parameters:
+  source: "//172.16.2.2/downloads/PT"
+  csi.storage.k8s.io/node-stage-secret-name: "nas-smb-creds"
+  csi.storage.k8s.io/node-stage-secret-namespace: "default"
+volumeBindingMode: Immediate
+reclaimPolicy: Delete
+mountOptions:
+  - dir_mode=0755
+  - file_mode=0644
+  - uid=1000
+  - gid=100
+  - noperm
+  - mfsymlinks
+  - cache=strict
+  - noserverino
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: statefulset-qbittorrent
+  labels:
+    app: qbittorrent
+spec:
+  serviceName: statefulset-qbittorrent
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: qbittorrent
+    spec:
+      containers:
+        - image: 80x86/qbittorrent:4.1.9
+        #- image: linuxserver/qbittorrent:4.1.9.99201911020617-6737-5d98721ubuntu18.04.1-ls51
+          name: qbittorrent
+          env:
+          - name: WEB_PORT
+            value: "8080"
+          - name: BT_PORT
+            value: "6882"
+          - name: TZ
+            value: "Asia/Shanghai"
+          - name: PUID
+            value: "1000"
+          - name: PGID
+            value: "100"
+          ports:
+            - containerPort: 8080
+              name: webui
+            - containerPort: 6882
+              name: bt
+            - containerPort: 6882
+              protocol: UDP
+              name: bt-udp
+          volumeMounts:
+            - name: downloads
+              mountPath: "/downloads"
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: qbittorrent
+  volumeClaimTemplates:
+    - metadata:
+        name: downloads
+        annotations:
+          volume.beta.kubernetes.io/storage-class: sc-qbittorrent-downloads
+      spec:
+        accessModes: ["ReadWriteMany"]
+        resources:
+          requests:
+            storage: 10Ti
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: srv-qbittorrent
+  namespace: qbittorrent
+spec:
+  type: ClusterIP
+  selector:
+    app: qbittorrent
+  ports:
+    - port: 8080
+      protocol: TCP
+      name: webui
+      targetPort: webui
+    - port: 6882
+      protocol: TCP
+      name: bt2
+      targetPort: bt2
+    - port: 6882
+      protocol: UDP
+      name: bt2-udp
+      targetPort: bt2-udp
+
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-qbittorrent-path
+  namespace: qbittorrent
+spec:
+  stripPrefix:
+    prefixes:
+    - /qbittorrent
+
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: traefik-ingress-qbittorrent
+  namespace: qbittorrent
+spec:
+  entryPoints:
+    - web
+    - websecure
+  routes:
+    - match: Host(`app.chiyuki.life`) && PathPrefix(`/qbittorrent/`)
+      middlewares:
+        - name: strip-qbittorrent-path
+      kind: Rule
+      services:
+        - name: srv-qbittorrent
+          port: 8080
+  tls: 
+    certResolver: chiyukilife
+    domains: 
+      - main: "*.chiyuki.life"
+
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRouteTCP
+metadata:
+  name: traefik-ingress-tcp-qbittorrent
+  namespace: qbittorrent
+spec:
+  entryPoints:
+    - bt2
+  routes:
+    - match: HostSNI(`*`)
+      services:
+        - name: srv-qbittorrent
+          port: 6882
+
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRouteUDP
+metadata:
+  name: traefik-ingress-udp-qbittorrent
+  namespace: qbittorrent
+spec:
+  entryPoints:
+    - bt2-udp
+  routes:
+    - services:
+      - name: srv-qbittorrent
+        port: 6882

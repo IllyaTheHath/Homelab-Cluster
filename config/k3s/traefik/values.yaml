@@ -1,0 +1,48 @@
+experimental:
+  http3:
+    enabled: true
+
+ingressRoute:
+  dashboard:
+    enabled: false
+
+persistence:
+  enabled: true
+  name: data
+  accessMode: ReadWriteOnce
+  size: 5G
+  storageClass: sc-traefik
+  path: /data
+
+additionalArguments:
+  - "--serversTransport.insecureSkipVerify=true"
+  - "--api.insecure=true"
+  - "--api.dashboard=true"
+  - "--certificatesresolvers.chiyukilife.acme.email=xxx@outlook.com" # 改成你自己的邮箱 以及 acme 名
+  - "--certificatesresolvers.chiyukilife.acme.storage=/data/acme.json"
+  - "--certificatesresolvers.chiyukilife.acme.dnschallenge=true"
+  - "--certificatesResolvers.chiyukilife.acme.dnsChallenge.provider=alidns"
+  - "--certificatesResolvers.chiyukilife.acme.caServer=https://acme-v02.api.letsencrypt.org/directory" # 正式证书
+  # - "--certificatesResolvers.chiyukilife.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory" # 测试证书
+
+ports:
+  bt:
+    port: 6881
+    expose: true
+    exposedPort: 6881
+    protocol: TCP
+  bt-udp:
+    port: 6881
+    expose: true
+    exposedPort: 6881
+    protocol: UDP
+
+entryPoints:
+  bt:
+    address: ':6881'
+  bt-udp:
+    address: ':6881/udp'
+
+envFrom:
+  - secretRef:
+      name: traefik-alidns

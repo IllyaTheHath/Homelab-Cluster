@@ -1,0 +1,16 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: sc-traefik
+provisioner: smb.csi.k8s.io
+parameters:
+  source: "//172.16.2.2/k3s/data/traefik"
+  csi.storage.k8s.io/node-stage-secret-name: "nas-smb-creds"
+  csi.storage.k8s.io/node-stage-secret-namespace: "default"
+volumeBindingMode: Immediate
+reclaimPolicy: Delete
+mountOptions:
+  - dir_mode=0777
+  - file_mode=0600
+  - uid=65532
+  - gid=65532

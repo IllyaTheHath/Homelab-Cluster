@@ -1,0 +1,31 @@
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-kdashboard-path
+  namespace: kubernetes-dashboard
+spec:
+  stripPrefix:
+    prefixes:
+    - /kdashboard
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: traefik-ingress-kdashboard
+  namespace: kubernetes-dashboard
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`app.chiyuki.life`) && PathPrefix(`/kdashboard`)
+      middlewares:
+        - name: strip-kdashboard-path
+      kind: Rule
+      services:
+        - name: kubernetes-dashboard
+          port: 443
+  tls: 
+    certResolver: chiyukilife
+    domains: 
+      - main: "*.chiyuki.life"

@@ -1,0 +1,210 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: sc-qbittorrentee-downloads
+  namespace: qbittorrentee
+provisioner: smb.csi.k8s.io
+parameters:
+  source: "//172.16.2.2/下载/BT"
+  csi.storage.k8s.io/node-stage-secret-name: "nas-smb-creds"
+  csi.storage.k8s.io/node-stage-secret-namespace: "default"
+volumeBindingMode: Immediate
+reclaimPolicy: Delete
+mountOptions:
+  - dir_mode=0755
+  - file_mode=0644
+  - uid=1026
+  - gid=100
+  - noperm
+  - mfsymlinks
+  - cache=strict
+  - noserverino
+
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: sc-qbittorrentee-config
+  namespace: qbittorrentee
+provisioner: smb.csi.k8s.io
+parameters:
+  source: "//172.16.2.2/k3s/data/qbittorrentee"
+  csi.storage.k8s.io/node-stage-secret-name: "nas-smb-creds"
+  csi.storage.k8s.io/node-stage-secret-namespace: "default"
+volumeBindingMode: Immediate
+reclaimPolicy: Delete
+mountOptions:
+  - dir_mode=0755
+  - file_mode=0644
+  - uid=1001
+  - gid=1001
+  - noperm
+  - mfsymlinks
+  - cache=strict
+  - noserverino
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: statefulset-qbittorrentee
+  labels:
+    app: qbittorrentee
+  namespace: qbittorrentee
+spec:
+  serviceName: statefulset-qbittorrentee
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: qbittorrentee
+    spec:
+      containers:
+        - image: superng6/qbittorrentee
+          name: qbittorrentee
+          env:
+            - name: QBT_WEBUI_PORT
+              value: "8080"
+            - name: TZ
+              value: "Asia/Shanghai"
+          ports:
+            - containerPort: 8080
+              name: webui
+            - containerPort: 6881
+              name: bt
+            - containerPort: 6881
+              protocol: UDP
+              name: bt-udp
+          volumeMounts:
+            - name: downloads
+              mountPath: "/downloads"
+            - name: config
+              mountPath: "/config"
+          resources:
+            limits:
+              memory: 1Gi
+              cpu: "2"
+            requests:
+              memory: 512Mi
+              cpu: "2"
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: qbittorrentee
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Delete
+  volumeClaimTemplates:
+    - metadata:
+        name: downloads
+        annotations:
+          volume.beta.kubernetes.io/storage-class: sc-qbittorrentee-downloads
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Ti
+    - metadata:
+        name: config
+        annotations:
+          volume.beta.kubernetes.io/storage-class: sc-qbittorrentee-config
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: srv-qbittorrentee
+  namespace: qbittorrentee
+spec:
+  type: ClusterIP
+  selector:
+    app: qbittorrentee
+  ipFamilyPolicy: PreferDualStack
+  ipFamilies:
+    - IPv4
+    - IPv6
+  ports:
+    - port: 8080
+      protocol: TCP
+      name: webui
+      targetPort: webui
+    - port: 6881
+      protocol: TCP
+      name: bt
+      targetPort: bt
+    - port: 6881
+      protocol: UDP
+      name: bt-udp
+      targetPort: bt-udp
+
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-qbittorrentee-path
+  namespace: qbittorrentee
+spec:
+  stripPrefix:
+    prefixes:
+      - /qbittorrentee
+
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: traefik-ingress-qbittorrentee
+  namespace: qbittorrentee
+spec:
+  entryPoints:
+    - web
+    - websecure
+  routes:
+    - match: Host(`app.chiyuki.life`) && PathPrefix(`/qbittorrentee/`)
+      middlewares:
+        - name: strip-qbittorrentee-path
+      kind: Rule
+      services:
+        - name: srv-qbittorrentee
+          port: 8080
+  tls:
+    certResolver: chiyukilife
+    domains:
+      - main: "*.chiyuki.life"
+
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRouteTCP
+metadata:
+  name: traefik-ingress-tcp-qbittorrentee
+  namespace: qbittorrentee
+spec:
+  entryPoints:
+    - bt
+  routes:
+    - match: HostSNI(`*`)
+      services:
+        - name: srv-qbittorrentee
+          port: 6881
+
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRouteUDP
+metadata:
+  name: traefik-ingress-udp-qbittorrentee
+  namespace: qbittorrentee
+spec:
+  entryPoints:
+    - bt-udp
+  routes:
+    - services:
+        - name: srv-qbittorrentee
+          port: 6881
