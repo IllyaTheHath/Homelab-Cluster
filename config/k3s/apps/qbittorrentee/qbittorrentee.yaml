@@ -122,7 +122,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: srv-qbittorrentee
+  name: srv-qbittorrentee-webui
   namespace: qbittorrentee
 spec:
   type: ClusterIP
@@ -137,14 +137,32 @@ spec:
       protocol: TCP
       name: webui
       targetPort: webui
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: srv-qbittorrentee-bt
+  namespace: qbittorrentee
+spec:
+  type: NodePort
+  selector:
+    app: qbittorrentee
+  ipFamilyPolicy: PreferDualStack
+  ipFamilies:
+    - IPv4
+    - IPv6
+  ports:
     - port: 6881
       protocol: TCP
       name: bt
       targetPort: bt
+      nodePort: 30681
     - port: 6881
       protocol: UDP
       name: bt-udp
       targetPort: bt-udp
+      nodePort: 30681
 
 ---
 apiVersion: traefik.containo.us/v1alpha1
@@ -179,32 +197,3 @@ spec:
     certResolver: chiyukilife
     domains:
       - main: "*.chiyuki.life"
-
----
-apiVersion: traefik.containo.us/v1alpha1
-kind: IngressRouteTCP
-metadata:
-  name: traefik-ingress-tcp-qbittorrentee
-  namespace: qbittorrentee
-spec:
-  entryPoints:
-    - bt
-  routes:
-    - match: HostSNI(`*`)
-      services:
-        - name: srv-qbittorrentee
-          port: 6881
-
----
-apiVersion: traefik.containo.us/v1alpha1
-kind: IngressRouteUDP
-metadata:
-  name: traefik-ingress-udp-qbittorrentee
-  namespace: qbittorrentee
-spec:
-  entryPoints:
-    - bt-udp
-  routes:
-    - services:
-        - name: srv-qbittorrentee
-          port: 6881

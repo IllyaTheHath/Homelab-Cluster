@@ -25,24 +25,6 @@ additionalArguments:
   - "--certificatesResolvers.chiyukilife.acme.caServer=https://acme-v02.api.letsencrypt.org/directory" # 正式证书
   # - "--certificatesResolvers.chiyukilife.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory" # 测试证书
 
-ports:
-  bt:
-    port: 6881
-    expose: true
-    exposedPort: 6881
-    protocol: TCP
-  bt-udp:
-    port: 6881
-    expose: true
-    exposedPort: 6881
-    protocol: UDP
-
-entryPoints:
-  bt:
-    address: ':6881'
-  bt-udp:
-    address: ':6881/udp'
-
 envFrom:
   - secretRef:
       name: traefik-alidns

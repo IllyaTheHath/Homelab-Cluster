@@ -115,8 +115,8 @@ spec:
       labels:
         app: plex
     spec:
-      hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
+      #hostNetwork: true
+      #dnsPolicy: ClusterFirstWithHostNet
       containers:
         - image: plexinc/pms-docker
           name: plex
@@ -127,6 +127,9 @@ spec:
               value: "1000"
             - name: PLEX_GID
               value: "1000"
+          ports:
+            - containerPort: 32400
+              name: webui
           volumeMounts:
             - mountPath: /config
               name: config
@@ -154,3 +157,29 @@ spec:
         #   nfs:
         #     server: 172.16.2.2
         #     path: /k3s/data/plex
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: srv-plex
+  namespace: plex
+spec:
+  type: NodePort
+  selector:
+    app: plex
+  ipFamilyPolicy: PreferDualStack
+  ipFamilies:
+    - IPv4
+    - IPv6
+  ports:
+    - port: 32400
+      protocol: TCP
+      name: webui
+      targetPort: webui
+      nodePort: 32400
+    - port: 32400 # UDP 大概没有必要，加了也无所谓
+      protocol: UDP
+      name: webui
+      targetPort: webui
+      nodePort: 32400
